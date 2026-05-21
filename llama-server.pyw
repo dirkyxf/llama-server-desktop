@@ -653,57 +653,70 @@ class LlamaServerApp(ctk.CTk):
     def build_command(self):
         try:
             cmd = ["llama-server"]
+
+            # Helper to add entry parameters only if not empty
+            def add_entry_param(flag, key):
+                val = self.inputs[key].get().strip()
+                if val:
+                    cmd.extend([flag, val])
+
+            # Model path
             model_path = self.inputs["model_path"].get().strip()
-            if not os.path.exists(model_path):
-                raise ValueError(f"找不到模型文件: {model_path}")
-            cmd.extend(["-m", model_path])
+            if model_path:
+                if not os.path.exists(model_path):
+                    raise ValueError(f"找不到模型文件: {model_path}")
+                cmd.extend(["-m", model_path])
 
-            # New parameters
-            cmd.extend(["--host", self.inputs["host"].get().strip()])
-            cmd.extend(["--port", self.inputs["port"].get().strip()])
-            cmd.extend(["-c", self.inputs["ctx_size"].get().strip()])
+            # Core params
+            add_entry_param("--host", "host")
+            add_entry_param("--port", "port")
+            add_entry_param("-c", "ctx_size")
 
+            # API Key
             api_key = self.inputs["api_key"].get().strip()
             if api_key:
                 cmd.extend(["--api-key", api_key])
 
-            cmd.extend(["-ngl", self.inputs["ngl"].get()])
-            cmd.extend(["--tensor-split", self.inputs["split"].get()])
+            # Hardware
+            add_entry_param("-ngl", "ngl")
+            add_entry_param("--tensor-split", "split")
 
             if self.inputs["fa"].get():
                 cmd.extend(["--flash-attn", "on"])
 
-            cmd.extend(["--threads", self.inputs["threads"].get()])
-            cmd.extend(["-b", self.inputs["batch_size"].get()])
+            add_entry_param("--threads", "threads")
+            add_entry_param("-b", "batch_size")
+            
             if self.inputs["mlock"].get():
                 cmd.append("--mlock")
-            cmd.extend(["--min-p", self.inputs["min_p"].get()])
-            cmd.extend(["--temp", self.inputs["temp"].get()])
-            cmd.extend(["--top-k", self.inputs["top_k"].get()])
-            cmd.extend(["--top-p", self.inputs["top_p"].get()])
-            cmd.extend(["--repeat-penalty", self.inputs["repeat_penalty"].get()])
-            cmd.extend(["--cache-type-k", self.inputs["cache_type_k"].get()])
-            cmd.extend(["--cache-type-v", self.inputs["cache_type_v"].get()])
 
+            # Generation
+            add_entry_param("--min-p", "min_p")
+            add_entry_param("--temp", "temp")
+            add_entry_param("--top-k", "top_k")
+            add_entry_param("--top-p", "top_p")
+            add_entry_param("--repeat-penalty", "repeat_penalty")
+            add_entry_param("--cache-type-k", "cache_type_k")
+            add_entry_param("--cache-type-v", "cache_type_v")
+
+            # MTP
             if self.inputs["spec_type"].get():
                 cmd.extend(["--spec-type", "draft-mtp"])
-                cmd.extend(["--spec-draft-n-max", self.inputs["spec_draft_n_max"].get()])
-                cmd.extend(["--spec-draft-p-min", self.inputs["spec_draft_p_min"].get()])
+                add_entry_param("--spec-draft-n-max", "spec_draft_n_max")
+                add_entry_param("--spec-draft-p-min", "spec_draft_p_min")
 
+            # Metrics
             if self.inputs["metrics"].get():
                 cmd.append("--metrics")
 
-            slots_val = self.inputs["slots"].get().strip()
-            if slots_val:
-                cmd.extend(["--slots", slots_val])
+            add_entry_param("--slots", "slots")
 
             if self.inputs["embedding"].get():
                 cmd.append("--embedding")
 
-            parallel_val = self.inputs["parallel"].get().strip()
-            if parallel_val:
-                cmd.extend(["--parallel", parallel_val])
+            add_entry_param("--parallel", "parallel")
 
+            # Log file
             if self.inputs["log_file"].get():
                 base_name = "llama-server.log"
                 log_dir = os.path.dirname(os.path.abspath(__file__))
