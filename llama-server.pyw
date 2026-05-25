@@ -157,6 +157,13 @@ class LlamaServerApp(ctk.CTk):
                 "help": "每次处理的提示词批处理大小",
             },
             {
+                "label": "禁止内存映射 (--no-mmap)",
+                "key": "no_mmap",
+                "type": "switch",
+                "default": True,
+                "help": "禁止内存映射，使用普通内存分配方式加载模型",
+            },
+            {
                 "label": "锁定内存 (--mlock)",
                 "key": "mlock",
                 "type": "switch",
@@ -345,7 +352,7 @@ class LlamaServerApp(ctk.CTk):
         # 定义分类
         core_keys = {"model_path", "ctx_size"}
         mtp_keys = {"spec_type", "spec_draft_n_max", "spec_draft_p_min"}
-        hw_keys = {"ngl", "split", "fa", "threads", "batch_size", "mlock"}
+        hw_keys = {"ngl", "split", "fa", "threads", "batch_size", "no_mmap", "mlock"}
         gen_keys = {"min_p", "metrics", "slots", "temp", "top_k", "top_p", "repeat_penalty", "cache_type_k", "cache_type_v"}
         other_keys = {"host", "port", "api_key", "auto_open", "embedding", "parallel", "log_file"}
 
@@ -363,8 +370,14 @@ class LlamaServerApp(ctk.CTk):
         self.cmd_textbox = ctk.CTkTextbox(cmd_tab, wrap="word", font=("Consolas", 12))
         self.cmd_textbox.pack(fill="both", expand=True, padx=10, pady=10)
         
-        save_btn = ctk.CTkButton(cmd_tab, text="保存当前配置", command=self.save_named_config, font=("Microsoft YaHei", 13))
-        save_btn.pack(pady=(0, 10))
+        btn_row = ctk.CTkFrame(cmd_tab, fg_color="transparent")
+        btn_row.pack(pady=(0, 10))
+        
+        save_btn = ctk.CTkButton(btn_row, text="保存当前配置", command=self.save_named_config, font=("Microsoft YaHei", 13))
+        save_btn.pack(side="left", padx=5)
+        
+        copy_btn = ctk.CTkButton(btn_row, text="复制", command=lambda: (self.clipboard_clear(), self.clipboard_append(self.cmd_textbox.get("1.0", "end").strip())), font=("Microsoft YaHei", 13))
+        copy_btn.pack(side="left", padx=5)
         
         # 配置清单区域（在保存按钮下方）
         ctk.CTkLabel(cmd_tab, text="已保存的配置清单:", font=("Microsoft YaHei", 12, "bold")).pack(anchor="w", padx=10)
@@ -687,6 +700,9 @@ class LlamaServerApp(ctk.CTk):
             add_entry_param("--threads", "threads")
             add_entry_param("-b", "batch_size")
             
+            if self.inputs["no_mmap"].get():
+                cmd.append("--no-mmap")
+
             if self.inputs["mlock"].get():
                 cmd.append("--mlock")
 
