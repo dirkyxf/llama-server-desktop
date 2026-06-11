@@ -174,6 +174,7 @@ class LlamaServerApp(ctk.CTk):
         self.config_schema = [
             {"label": "模型路径 (-m)", "key": "model_path", "type": "entry", "default": "", "help": "GGUF 模型的完整文件路径"},
             {"label": "多模态投影 (-mmproj)", "key": "mmproj", "type": "entry", "default": "", "help": "多模态投影模型的 GGUF 文件路径"},
+            {"label": "草稿模型 (--model-draft)", "key": "model_draft", "type": "entry", "default": "", "help": "推测解码使用的草稿模型文件路径 (GGUF)"},
             {"label": "监听地址 (--host)", "key": "host", "type": "entry", "default": "127.0.0.1", "help": "监听的 IP 地址"},
             {"label": "监听端口 (--port)", "key": "port", "type": "entry", "default": "8080", "help": "监听的端口号"},
             {"label": "上下文大小 (-c)", "key": "ctx_size", "type": "entry", "default": "4096", "help": "提示词和响应的最大上下文长度"},
@@ -199,6 +200,7 @@ class LlamaServerApp(ctk.CTk):
             {"label": "K缓存类型 (--cache-type-k)", "key": "cache_type_k", "type": "entry", "default": "q4_0", "help": "KV 缓存中 K 的数据类型"},
             {"label": "V缓存类型 (--cache-type-v)", "key": "cache_type_v", "type": "entry", "default": "q4_0", "help": "KV 缓存中 V 的数据类型"},
             {"label": "关闭思考模式 (--chat-template-kwargs)", "key": "chat_template_kwargs", "type": "switch", "default": False, "help": "开启后传递 {\"enable_thinking\":false}，关闭模型的思考/推理模式"},
+            {"label": "Jinja模板 (--jinja)", "key": "jinja", "type": "switch", "default": False, "help": "启用 Jinja2 模板引擎处理聊天模板，支持更复杂的模板语法"},
             {"label": "推测解码类型 (--spec-type)", "key": "spec_type", "type": "switch", "default": False, "help": "开启推测解码加速 (draft-mtp)"},
             {"label": "推测草稿数量 (--spec-draft-n-max)", "key": "spec_draft_n_max", "type": "entry", "default": "2", "help": "每次推测生成的最大草稿数量"},
             {"label": "推测草稿概率阈值 (--spec-draft-p-min)", "key": "spec_draft_p_min", "type": "entry", "default": "0.75", "help": "推测草稿的最小概率阈值"},
@@ -373,11 +375,12 @@ class LlamaServerApp(ctk.CTk):
         # 修复标签页文字颜色（customtkinter 默认 #DCE4EE 在浅色下看不清）
         self._fix_tab_text_colors()
 
-        core_keys  = {"model_path", "mmproj", "ctx_size"}
+        core_keys  = {"model_path", "mmproj", "model_draft", "ctx_size"}
         mtp_keys   = {"spec_type", "spec_draft_n_max", "spec_draft_p_min"}
         hw_keys    = {"ngl", "split", "fa", "threads", "tb", "batch_size", "no_mmap", "mlock"}
         gen_keys   = {"min_p", "metrics", "slots", "temp", "top_k", "top_p",
-                      "repeat_penalty", "cache_type_k", "cache_type_v", "chat_template_kwargs"}
+                      "repeat_penalty", "cache_type_k", "cache_type_v",
+                      "chat_template_kwargs", "jinja"}
         other_keys = {"host", "port", "api_key", "auto_open", "embedding",
                       "parallel", "log_file"}
 
@@ -627,7 +630,7 @@ class LlamaServerApp(ctk.CTk):
         ModernTooltip(help_lbl, item["help"]).bind_tips()
 
         if item["type"] == "entry":
-            if item["key"] in ("model_path", "mmproj"):
+            if item["key"] in ("model_path", "mmproj", "model_draft"):
                 ec = ctk.CTkFrame(row, fg_color="transparent")
                 ec.pack(side="right", expand=True, fill="x")
 
@@ -878,6 +881,7 @@ class LlamaServerApp(ctk.CTk):
                 cmd.extend(["-m", model_path])
 
             add("--mmproj", "mmproj")
+            add("--model-draft", "model_draft")
 
             add("--host", "host")
             add("--port", "port")
@@ -912,6 +916,9 @@ class LlamaServerApp(ctk.CTk):
 
             if self.inputs["chat_template_kwargs"].get():
                 cmd.extend(["--chat-template-kwargs", '{"enable_thinking":false}'])
+
+            if self.inputs["jinja"].get():
+                cmd.append("--jinja")
 
             if self.inputs["spec_type"].get():
                 cmd.extend(["--spec-type", "draft-mtp"])
