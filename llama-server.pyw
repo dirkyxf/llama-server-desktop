@@ -617,6 +617,25 @@ class LlamaServerApp(ctk.CTk):
                   text_color="text_on_light")
         copy_btn.pack(side="left")
 
+        alias_btn = ctk.CTkButton(
+            btn_row, text="别名", width=60, height=BTN_HEIGHT_SM,
+            font=(FONT_FAMILY, FONT_SIZE_BODY),
+            fg_color="transparent",
+            corner_radius=RADIUS_SM,
+        )
+        self._reg(alias_btn, text_color="accent_blue")
+        alias_btn.pack(side="left", padx=(PAD_MD, PAD_XS))
+
+        self.alias_entry = ctk.CTkEntry(
+            btn_row, height=BTN_HEIGHT_SM,
+            placeholder_text="--alias 模型别名",
+            font=(FONT_FAMILY, FONT_SIZE_CAPTION),
+        )
+        self._reg(self.alias_entry, fg_color="bg_input", border_color="border",
+                  text_color="text_primary")
+        self.alias_entry.pack(side="left", fill="x", expand=True, padx=(0, PAD_SM))
+        self.alias_entry.bind("<KeyRelease>", lambda _: self.update_command_display())
+
         # 分隔线
         sep = ctk.CTkFrame(cmd_tab, height=1)
         self._reg(sep, fg_color="border")
@@ -886,6 +905,10 @@ class LlamaServerApp(ctk.CTk):
     # ── 已保存配置管理 ───────────────────────────────────────────────────────
     def save_named_config(self):
         dialog = ctk.CTkInputDialog(text="请输入配置名称:", title="保存配置")
+        alias = self.alias_entry.get().strip()
+        if alias:
+            dialog.entry.delete(0, "end")
+            dialog.entry.insert(0, alias)
         name = dialog.get_input()
         if not name or not name.strip():
             return
@@ -1029,6 +1052,11 @@ class LlamaServerApp(ctk.CTk):
             # 可选路径参数
             add("--mmproj", "mmproj")
             add("--model-draft", "model_draft")
+
+            # 模型别名
+            alias = self.alias_entry.get().strip()
+            if alias:
+                cmd.extend(["--alias", alias])
 
             # 网络与上下文
             add("--host", "host")
