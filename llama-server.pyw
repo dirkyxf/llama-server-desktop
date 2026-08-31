@@ -110,11 +110,11 @@ TAB_NAMES = ("核心启动参数", "硬件加速", "生成控制", "其他参数
 # 参数分类
 PARAM_GROUPS = {
     "核心启动参数": [
-        ({"model_path", "mmproj", "model_draft", "ctx_size"}, "tag_core", "🔴  核心启动参数（必选）"),
+        ({"model_path", "mmproj", "model_draft", "ctx_size", "agent"}, "tag_core", "🔴  核心启动参数（必选）"),
         ({"spec_type", "spec_draft_n_max", "spec_draft_p_min"}, "accent_orange", "🚀  MTP / DFlash 推测解码"),
     ],
     "硬件加速": [
-        ({"ngl", "split", "sm", "fa", "threads", "tb", "batch_size", "no_mmap", "mlock"}, "tag_hw", "🔵  硬件加速与性能"),
+        ({"ngl", "split", "sm", "n_cpu_moe", "fa", "threads", "tb", "batch_size", "load_mode"}, "tag_hw", "🔵  硬件加速与性能"),
     ],
     "生成控制": [
         ({"min_p", "metrics", "slots", "temp", "top_k", "top_p",
@@ -134,18 +134,19 @@ CONFIG_SCHEMA = [
     {"label": "监听地址 (--host)",            "key": "host",                "type": "entry",   "default": "127.0.0.1", "help": "监听的 IP 地址"},
     {"label": "监听端口 (--port)",            "key": "port",                "type": "entry",   "default": "8080",   "help": "监听的端口号"},
     {"label": "上下文大小 (-c)",              "key": "ctx_size",            "type": "entry",   "default": "4096",   "help": "提示词和响应的最大上下文长度"},
+    {"label": "Agent模式 (--agent)",           "key": "agent",               "type": "switch",  "default": True,     "help": "启用内置工具（文件读写、命令执行等），默认限制CORS为localhost"},
     {"label": "API Key (--api-key)",         "key": "api_key",             "type": "entry",   "default": "sk-123456", "help": "访问 API 所需的密钥"},
     {"label": "并行处理数 (--parallel)",      "key": "parallel",            "type": "entry",   "default": "1",      "help": "并行处理的请求数量"},
     {"label": "日志文件 (--log-file)",        "key": "log_file",            "type": "switch",  "default": False,    "help": "开启后将日志输出到 llama-server.log"},
     {"label": "GPU层数 (-ngl)",              "key": "ngl",                 "type": "entry",   "default": "99",     "help": "将多少层模型卸载到 GPU (99 表示全量)"},
     {"label": "张量分割 (--tensor-split)",    "key": "split",               "type": "entry",   "default": "2,1",    "help": "多显卡权重分配，如 '1,1' 或 '2,1'"},
     {"label": "分割模式 (-sm)",               "key": "sm",                   "type": "option",  "default": "layer", "options": ["none", "layer", "row"], "help": "多 GPU 模型分割方式：none 不分割只用单卡，layer 按层分割（默认），row 按行分割"},
+    {"label": "MoE CPU层数 (--n-cpu-moe)",    "key": "n_cpu_moe",            "type": "entry",   "default": "",       "help": "MoE模型：将前N层的专家权重保留在CPU，用于显存不足时卸载部分层到CPU"},
     {"label": "Flash Attention (--flash-attn)", "key": "fa",               "type": "switch",  "default": True,     "help": "启用 Flash Attention 加速计算"},
     {"label": "线程数 (--threads)",           "key": "threads",             "type": "entry",   "default": "10",     "help": "使用的 CPU 线程数"},
     {"label": "物理批大小 (-tb)",             "key": "tb",                  "type": "entry",   "default": "",       "help": "单次前向传播的最大 token 数 (ubatch)，影响显存占用和推理速度"},
     {"label": "批大小 (-b)",                 "key": "batch_size",          "type": "entry",   "default": "512",    "help": "每次处理的提示词批处理大小"},
-    {"label": "禁止内存映射 (--no-mmap)",    "key": "no_mmap",             "type": "switch",  "default": True,     "help": "禁止内存映射，使用普通内存分配方式加载模型"},
-    {"label": "锁定内存 (--mlock)",          "key": "mlock",               "type": "switch",  "default": True,     "help": "锁定物理内存，防止模型被交换到硬盘"},
+    {"label": "加载模式 (--load-mode)",       "key": "load_mode",           "type": "option",  "default": "mlock",  "options": ["mmap", "mlock", "none"], "help": "模型加载模式：mmap 内存映射（默认），mlock 锁定内存防换出，none 无特殊模式"},
     {"label": "Min-P 采样 (--min-p)",        "key": "min_p",               "type": "entry",   "default": "0.05",   "help": "采样过滤阈值，控制生成多样性"},
     {"label": "指标统计 (--metrics)",         "key": "metrics",             "type": "switch",  "default": True,     "help": "在服务器中开启性能指标统计"},
     {"label": "自动打开浏览器",              "key": "auto_open",           "type": "switch",  "default": True,     "help": "启动后自动在 Edge 浏览器中打开 API 界面"},
@@ -158,7 +159,7 @@ CONFIG_SCHEMA = [
     {"label": "V缓存类型 (--cache-type-v)", "key": "cache_type_v",        "type": "option",  "default": "q4_0", "options": ["q4_0", "q8_0"], "help": "KV 缓存中 V 的数据类型，q8_0 精度更高但占用更多显存"},
     {"label": "关闭思考模式 (--chat-template-kwargs)", "key": "chat_template_kwargs", "type": "switch", "default": False, "help": "开启后传递 {\"enable_thinking\":false}，关闭模型的思考/推理模式"},
     {"label": "Jinja模板 (--jinja)",         "key": "jinja",               "type": "switch",  "default": False,    "help": "启用 Jinja2 模板引擎处理聊天模板，支持更复杂的模板语法"},
-    {"label": "推理模式 (--reasoning)",        "key": "reasoning",           "type": "switch",  "default": False,    "help": "启用推理模式，模型会在回复中输出思考链（thinking/reasoning），适用于需要逻辑推导的复杂任务"},
+    {"label": "推理模式 (--reasoning)",        "key": "reasoning",           "type": "option",  "default": "off",    "options": ["on", "off", "auto"], "help": "推理模式：on 启用思考链输出，off 关闭，auto 由模型自动决定"},
     {"label": "推测解码类型 (--spec-type)",   "key": "spec_type",           "type": "option",  "default": "关闭", "options": ["关闭", "MTP (draft-mtp)", "DFlash (draft-dflash)"], "help": "选择推测解码类型：MTP 或 DFlash"},
     {"label": "推测草稿数量 (--spec-draft-n-max)", "key": "spec_draft_n_max", "type": "entry", "default": "2",   "help": "每次推测生成的最大草稿数量"},
     {"label": "推测草稿概率阈值 (--spec-draft-p-min)", "key": "spec_draft_p_min", "type": "entry", "default": "0.75", "help": "推测草稿的最小概率阈值"},
@@ -907,8 +908,7 @@ class LlamaServerApp(ctk.CTk):
         dialog = ctk.CTkInputDialog(text="请输入配置名称:", title="保存配置")
         alias = self.alias_entry.get().strip()
         if alias:
-            dialog.entry.delete(0, "end")
-            dialog.entry.insert(0, alias)
+            dialog.after(100, lambda: (dialog.entry.delete(0, "end"), dialog.entry.insert(0, alias)))
         name = dialog.get_input()
         if not name or not name.strip():
             return
@@ -1032,9 +1032,12 @@ class LlamaServerApp(ctk.CTk):
         try:
             cmd = ["llama-server"]
 
+            if self.inputs["agent"].get():
+                cmd.append("--agent")
+
             def add(flag, key):
                 val = self.inputs[key].get().strip()
-                if val:
+                if val and val != "none":
                     cmd.extend([flag, val])
 
             def add_flag(key):
@@ -1071,6 +1074,7 @@ class LlamaServerApp(ctk.CTk):
             add("-ngl", "ngl")
             add("--tensor-split", "split")
             add("-sm", "sm")
+            add("--n-cpu-moe", "n_cpu_moe")
 
             if self.inputs["fa"].get():
                 cmd.extend(["--flash-attn", "on"])
@@ -1079,11 +1083,10 @@ class LlamaServerApp(ctk.CTk):
             add("-tb", "tb")
             add("-b", "batch_size")
 
-            # 内存控制
-            if self.inputs["no_mmap"].get():
-                cmd.append("--no-mmap")
-            if self.inputs["mlock"].get():
-                cmd.append("--mlock")
+            # 加载模式
+            load_mode = self.inputs["load_mode"].get()
+            if load_mode:
+                cmd.extend(["--load-mode", load_mode])
 
             # 采样参数
             add("--min-p", "min_p")
@@ -1101,8 +1104,9 @@ class LlamaServerApp(ctk.CTk):
                 cmd.append("--jinja")
 
             # 推理模式
-            if self.inputs["reasoning"].get():
-                cmd.append("--reasoning")
+            reasoning = self.inputs["reasoning"].get()
+            if reasoning:
+                cmd.extend(["--reasoning", reasoning])
 
             # 推测解码
             spec_type_val = self.inputs["spec_type"].get()
