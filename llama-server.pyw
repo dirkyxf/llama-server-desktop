@@ -1,4 +1,4 @@
-﻿import customtkinter as ctk
+import customtkinter as ctk
 import tkinter as tk
 from tkinter import messagebox, filedialog
 import subprocess
@@ -14,9 +14,39 @@ ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
 # ── 全局设计 Token ────────────────────────────────────────────────────────────
-FONT_FAMILY = "Microsoft YaHei UI"
-FONT_MONO = "Cascadia Code"
-FONT_EMOJI = "Segoe UI Emoji"
+# 字体按平台自适应：Windows 用微软雅黑/Cascadia，macOS 用苹方/SF Mono，Linux 回退 DejaVu
+def _pick_font(candidates: tuple[str, ...]) -> str:
+    try:
+        import tkinter.font as tkfont
+        available = set(tkfont.families())
+        for name in candidates:
+            if name in available:
+                return name
+    except Exception:
+        pass
+    return candidates[-1]
+
+FONT_FAMILY = _pick_font((
+    "Microsoft YaHei UI",   # Windows
+    "PingFang SC",          # macOS
+    "Noto Sans CJK SC",     # Linux
+    "Helvetica Neue",       # macOS 回退
+    "Arial",                # 通用回退
+))
+FONT_MONO = _pick_font((
+    "Cascadia Code",        # Windows
+    "SF Mono",              # macOS
+    "Menlo",                # macOS 回退
+    "DejaVu Sans Mono",     # Linux
+    "Consolas",             # Windows 回退
+    "Courier New",          # 通用回退
+))
+FONT_EMOJI = _pick_font((
+    "Segoe UI Emoji",       # Windows
+    "Apple Color Emoji",    # macOS
+    "Noto Color Emoji",     # Linux
+    "Arial",                # 通用回退
+))
 
 # 字号层级
 FONT_SIZE_TITLE     = 18
@@ -1191,10 +1221,15 @@ class LlamaServerApp(ctk.CTk):
     def run_server(self, cmd: list[str]):
         ready_detected = False
         try:
-            creationflags = subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
+            kwargs = {}
+            if platform.system() == "Windows":
+                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            else:
+                # macOS / Linux：让子进程拥有独立进程组，便于整体停止
+                kwargs["start_new_session"] = True
             self.process = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, shell=False, bufsize=1, creationflags=creationflags,
+                text=True, shell=False, bufsize=1, **kwargs,
             )
             for line in self.process.stdout:
                 clean = line.strip()
@@ -1223,10 +1258,25 @@ class LlamaServerApp(ctk.CTk):
 
     def stop_server(self):
         if self.process:
-            subprocess.call(
-                ["taskkill", "/F", "/T", "/PID", str(self.process.pid)],
-                shell=True,
-            )
+            try:
+                if platform.system() == "Windows":
+                    # Windows：连同子进程树一起结束
+                    subprocess.call(
+                        ["taskkill", "/F", "/T", "/PID", str(self.process.pid)],
+                        shell=True,
+                    )
+                else:
+                    # macOS / Linux：先终止进程组，再强制杀死本进程
+                    try:
+                        os.killpg(os.getpgid(self.process.pid), 15)  # SIGTERM
+                    except (ProcessLookupError, PermissionError):
+                        pass
+                    try:
+                        self.process.kill()  # SIGKILL
+                    except (ProcessLookupError, OSError):
+                        pass
+            except Exception as e:
+                print(f"⚠️ 停止服务器时出错: {e}")
             print("🛑 已强制停止服务器")
 
     def on_closing(self):
