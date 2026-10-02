@@ -1,0 +1,9 @@
+*.log
+*.json
+README.md
+dist/
+build/
+.DS_Store
+setup.py
+*.pyc
+build_macos.sh

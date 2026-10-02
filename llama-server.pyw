@@ -1,4 +1,4 @@
-import customtkinter as ctk
+﻿import customtkinter as ctk
 import tkinter as tk
 from tkinter import messagebox, filedialog
 import subprocess
@@ -8,45 +8,17 @@ import sys
 import webbrowser
 import platform
 import json
+import signal
+import shutil
 
 # ── 主题与外观 ────────────────────────────────────────────────────────────────
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
 # ── 全局设计 Token ────────────────────────────────────────────────────────────
-# 字体按平台自适应：Windows 用微软雅黑/Cascadia，macOS 用苹方/SF Mono，Linux 回退 DejaVu
-def _pick_font(candidates: tuple[str, ...]) -> str:
-    try:
-        import tkinter.font as tkfont
-        available = set(tkfont.families())
-        for name in candidates:
-            if name in available:
-                return name
-    except Exception:
-        pass
-    return candidates[-1]
-
-FONT_FAMILY = _pick_font((
-    "Microsoft YaHei UI",   # Windows
-    "PingFang SC",          # macOS
-    "Noto Sans CJK SC",     # Linux
-    "Helvetica Neue",       # macOS 回退
-    "Arial",                # 通用回退
-))
-FONT_MONO = _pick_font((
-    "Cascadia Code",        # Windows
-    "SF Mono",              # macOS
-    "Menlo",                # macOS 回退
-    "DejaVu Sans Mono",     # Linux
-    "Consolas",             # Windows 回退
-    "Courier New",          # 通用回退
-))
-FONT_EMOJI = _pick_font((
-    "Segoe UI Emoji",       # Windows
-    "Apple Color Emoji",    # macOS
-    "Noto Color Emoji",     # Linux
-    "Arial",                # 通用回退
-))
+FONT_FAMILY = "Microsoft YaHei UI"
+FONT_MONO = "Cascadia Code"
+FONT_EMOJI = "Segoe UI Emoji"
 
 # 字号层级
 FONT_SIZE_TITLE     = 18
@@ -79,9 +51,67 @@ HEADER_HEIGHT  = 60
 FOOTER_HEIGHT  = 58
 TAB_BTN_HEIGHT = 36
 
-APP_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
+def _detect_frozen() -> tuple[bool, str | None]:
+    if not getattr(sys, "frozen", False):
+        return False, None
+    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+    res_dir = os.path.normpath(os.path.join(exe_dir, os.pardir, "Resources"))
+    return True, res_dir
+
+
+IS_FROZEN, RES_DIR = _detect_frozen()
+
+if IS_FROZEN:
+    home = os.path.expanduser("~")
+    if platform.system() == "Windows":
+        APP_DIR = os.path.join(os.environ.get("APPDATA") or home, "LlamaServer")
+    else:
+        APP_DIR = os.path.join(home, "Library", "Application Support", "LlamaServer")
+    os.makedirs(APP_DIR, exist_ok=True)
+    for _seed in ("config.json", "config_list.json"):
+        _dst = os.path.join(APP_DIR, _seed)
+        _src = os.path.join(RES_DIR or APP_DIR, _seed)
+        if not os.path.exists(_dst) and os.path.exists(_src):
+            shutil.copy2(_src, _dst)
+else:
+    APP_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
+
 CONFIG_PATH = os.path.join(APP_DIR, "config.json")
 CONFIG_LIST_PATH = os.path.join(APP_DIR, "config_list.json")
+
+IS_WIN = platform.system() == "Windows"
+LLAMA_EXE_NAME = "llama-server.exe" if IS_WIN else "llama-server"
+
+
+def _is_runnable(p: str) -> bool:
+    if not os.path.isfile(p):
+        return False
+    return True if IS_WIN else os.access(p, os.X_OK)
+
+
+def resolve_llama_server() -> str | None:
+    env = os.environ.get("LLAMA_SERVER_BIN")
+    if env and _is_runnable(env):
+        return env
+    found = shutil.which(LLAMA_EXE_NAME, path=os.environ.get("PATH"))
+    if found:
+        return found
+    home = os.path.expanduser("~")
+    candidates = [
+        APP_DIR,
+        os.path.dirname(os.path.abspath(sys.argv[0])),
+        os.path.join(home, "llama.cpp", "build", "bin"),
+        os.path.join(home, "llama.cpp", "build", "bin", "Release"),
+        os.path.join(home, "llamacpp"),
+        os.path.join(home, "bin"),
+    ]
+    if not IS_WIN:
+        candidates += ["/opt/homebrew/bin", "/usr/local/bin"]
+    for d in candidates:
+        p = os.path.join(d, LLAMA_EXE_NAME)
+        if _is_runnable(p):
+            return p
+    return None
 
 # 双主题色板
 THEMES = {
@@ -1060,7 +1090,7 @@ class LlamaServerApp(ctk.CTk):
 
     def build_command(self) -> list[str] | None:
         try:
-            cmd = ["llama-server"]
+            cmd = [resolve_llama_server() or LLAMA_EXE_NAME]
 
             if self.inputs["agent"].get():
                 cmd.append("--agent")
@@ -1168,7 +1198,7 @@ class LlamaServerApp(ctk.CTk):
     @staticmethod
     def _resolve_log_path() -> str:
         base_name = "llama-server.log"
-        log_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else APP_DIR
+        log_dir = APP_DIR
         log_path = os.path.join(log_dir, base_name)
 
         if not os.path.exists(log_path):
@@ -1198,6 +1228,19 @@ class LlamaServerApp(ctk.CTk):
         port = self.inputs["port"].get().strip()
         self.target_url = f"http://{host}:{port}"
 
+        if not resolve_llama_server():
+            messagebox.showerror(
+                "找不到 llama-server",
+                "未检测到 llama-server 可执行文件。\n\n"
+                "请先安装 llama.cpp，或将其放到以下任一位置：\n"
+                "  · 系统 PATH 中\n"
+                "  · ~/llama.cpp/build/bin/\n"
+                "  · ~/llamacpp/\n"
+                "  · /opt/homebrew/bin/ 或 /usr/local/bin/\n\n"
+                "也可以设置环境变量 LLAMA_SERVER_BIN 指向可执行文件。",
+            )
+            return
+
         cmd = self.build_command()
         if not cmd:
             return
@@ -1221,15 +1264,11 @@ class LlamaServerApp(ctk.CTk):
     def run_server(self, cmd: list[str]):
         ready_detected = False
         try:
-            kwargs = {}
-            if platform.system() == "Windows":
-                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-            else:
-                # macOS / Linux：让子进程拥有独立进程组，便于整体停止
-                kwargs["start_new_session"] = True
+            creationflags = subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
             self.process = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, shell=False, bufsize=1, **kwargs,
+                text=True, shell=False, bufsize=1, creationflags=creationflags,
+                start_new_session=(platform.system() != "Windows"),
             )
             for line in self.process.stdout:
                 clean = line.strip()
@@ -1258,25 +1297,19 @@ class LlamaServerApp(ctk.CTk):
 
     def stop_server(self):
         if self.process:
-            try:
-                if platform.system() == "Windows":
-                    # Windows：连同子进程树一起结束
-                    subprocess.call(
-                        ["taskkill", "/F", "/T", "/PID", str(self.process.pid)],
-                        shell=True,
-                    )
-                else:
-                    # macOS / Linux：先终止进程组，再强制杀死本进程
+            if platform.system() == "Windows":
+                subprocess.call(
+                    ["taskkill", "/F", "/T", "/PID", str(self.process.pid)],
+                    shell=True,
+                )
+            else:
+                try:
+                    os.killpg(os.getpgid(self.process.pid), signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
                     try:
-                        os.killpg(os.getpgid(self.process.pid), 15)  # SIGTERM
-                    except (ProcessLookupError, PermissionError):
+                        self.process.kill()
+                    except ProcessLookupError:
                         pass
-                    try:
-                        self.process.kill()  # SIGKILL
-                    except (ProcessLookupError, OSError):
-                        pass
-            except Exception as e:
-                print(f"⚠️ 停止服务器时出错: {e}")
             print("🛑 已强制停止服务器")
 
     def on_closing(self):
